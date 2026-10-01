@@ -30,17 +30,42 @@ async function getEncoded(): Promise<EncodedCatalog> {
         }
         const data = JSON.parse(raw) as EncodedCatalog;
         byId = new Map();
-        searchHay = new Array(data.t.length);
-        fameOrder = Array.from({ length: data.t.length }, (_, i) => i);
         for (let i = 0; i < data.t.length; i++) {
-            const row = data.t[i];
-            const en = row[2];
-            const ar = row[3] || en;
-            const original = row[17] || "";
             byId.set(idAt(data, i), i);
-            searchHay[i] = `${normalise(en)} ${normalise(ar)} ${normalise(original)}`;
         }
-        fameOrder.sort((a, b) => data.t[b][12] - data.t[a][12]);
+
+        let loadedPrebuiltIndex = false;
+        if (!remoteUrl) {
+            try {
+                const indexRaw = await readFile(join(process.cwd(), "public", "catalog-search-index.json"), "utf8");
+                const index = JSON.parse(indexRaw) as { v?: number; h?: unknown; f?: unknown };
+                if (index.v === 1 &&
+                    Array.isArray(index.h) &&
+                    index.h.length === data.t.length &&
+                    Array.isArray(index.f) &&
+                    index.f.length === data.t.length) {
+                    searchHay = index.h as string[];
+                    fameOrder = index.f as number[];
+                    loadedPrebuiltIndex = true;
+                }
+            }
+            catch {
+                // Fall back to building the index at runtime.
+            }
+        }
+
+        if (!loadedPrebuiltIndex) {
+            searchHay = new Array(data.t.length);
+            fameOrder = Array.from({ length: data.t.length }, (_, i) => i);
+            for (let i = 0; i < data.t.length; i++) {
+                const row = data.t[i];
+                const en = row[2];
+                const ar = row[3] || en;
+                const original = row[17] || "";
+                searchHay[i] = `${normalise(en)} ${normalise(ar)} ${normalise(original)}`;
+            }
+            fameOrder.sort((a, b) => data.t[b][12] - data.t[a][12]);
+        }
         return data;
     })();
     return encodedPromise;
@@ -120,8 +145,4 @@ export async function serverOnboardingTitles(limit = 48): Promise<Title[]> {
             candidates.push(title);
     }
     return resolveSeeds(candidates, limit);
-}
-
-export async function warmServerCatalog(): Promise<void> {
-    await getEncoded();
 }
