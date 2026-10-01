@@ -121,3 +121,7 @@ export async function serverOnboardingTitles(limit = 48): Promise<Title[]> {
     }
     return resolveSeeds(candidates, limit);
 }
+
+export async function warmServerCatalog(): Promise<void> {
+    await getEncoded();
+}
