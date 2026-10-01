@@ -7,6 +7,17 @@ import { featurize } from "@/lib/engine/features";
 import type { CandidateItem } from "@/lib/engine/recommend";
 import type { Title } from "@/lib/types";
 import { normalise } from "@/lib/search-core";
+type SeenItCatalogRuntimeCache = {
+    data: EncodedCatalog;
+    byId: Map<string, number>;
+    searchHay: string[];
+    fameOrder: number[];
+};
+
+declare global {
+    var __seenItCatalogRuntime: SeenItCatalogRuntimeCache | undefined;
+}
+
 let encodedPromise: Promise<EncodedCatalog> | null = null;
 let byId: Map<string, number> | null = null;
 let searchHay: string[] | null = null;
@@ -16,6 +27,14 @@ function idAt(data: EncodedCatalog, i: number): string {
     return `${row[1] === 1 ? "tv" : "movie"}-${row[0]}`;
 }
 async function getEncoded(): Promise<EncodedCatalog> {
+    const shared = globalThis.__seenItCatalogRuntime;
+    if (shared) {
+        byId = shared.byId;
+        searchHay = shared.searchHay;
+        fameOrder = shared.fameOrder;
+        return shared.data;
+    }
+
     encodedPromise ??= (async () => {
         const dataBase = (process.env.NEXT_PUBLIC_DATA_BASE_URL ?? "").replace(/\/$/, "");
         const remoteUrl = process.env.SEEN_IT_CATALOG_URL ?? (dataBase ? `${dataBase}/catalog.json` : "");
@@ -66,9 +85,19 @@ async function getEncoded(): Promise<EncodedCatalog> {
             }
             fameOrder.sort((a, b) => data.t[b][12] - data.t[a][12]);
         }
+        globalThis.__seenItCatalogRuntime = {
+            data,
+            byId: byId!,
+            searchHay: searchHay!,
+            fameOrder: fameOrder!,
+        };
         return data;
     })();
     return encodedPromise;
+}
+
+export async function warmServerCatalog(): Promise<void> {
+    await getEncoded();
 }
 function decodeOne(data: EncodedCatalog, i: number): Title | undefined {
     return decodeRange(data, i, i + 1)[0];
